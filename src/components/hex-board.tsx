@@ -24,6 +24,10 @@ type HexBoardProps = {
 	hexSize?: number;
 	/** Axial key (`q,r`) → label drawn on the tile. */
 	labels?: Record<string, string>;
+	/** Axial key (`q,r`) → tile fill color. */
+	tileColors?: Record<string, string>;
+	/** Axial key of the tile that shows a ball. */
+	ballKey?: string;
 	/** Axial keys that hover/click. Defaults to labeled tiles, or all if unlabeled. */
 	interactiveKeys?: string[];
 	/** When false, tiles don't toggle a selected state. Default true. */
@@ -35,6 +39,8 @@ export function HexBoard({
 	radius = 5,
 	hexSize = 1,
 	labels,
+	tileColors,
+	ballKey,
 	interactiveKeys,
 	selectable = true,
 	onTileClick,
@@ -70,6 +76,8 @@ export function HexBoard({
 				radius={radius}
 				hexSize={hexSize}
 				labels={labels}
+				tileColors={tileColors}
+				ballKey={ballKey}
 				interactiveKeys={interactiveKeys}
 				selectable={selectable}
 				onTileClick={onTileClick}
@@ -126,6 +134,8 @@ function HexGrid({
 	radius,
 	hexSize,
 	labels,
+	tileColors,
+	ballKey,
 	interactiveKeys,
 	selectable,
 	onTileClick,
@@ -134,6 +144,8 @@ function HexGrid({
 	radius: number;
 	hexSize: number;
 	labels?: Record<string, string>;
+	tileColors?: Record<string, string>;
+	ballKey?: string;
 	interactiveKeys?: string[];
 	selectable: boolean;
 	onTileClick?: (hex: Axial) => void;
@@ -157,6 +169,14 @@ function HexGrid({
 		() => new THREE.PlaneGeometry(hexSize * 1.5, hexSize * 1.5),
 		[hexSize],
 	);
+	const ballGeometry = useMemo(
+		() => new THREE.CircleGeometry(hexSize * 0.2, 24),
+		[hexSize],
+	);
+	const ballOutlineGeometry = useMemo(
+		() => new THREE.CircleGeometry(hexSize * 0.26, 24),
+		[hexSize],
+	);
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 
@@ -166,8 +186,10 @@ function HexGrid({
 		return () => {
 			geometry.dispose();
 			labelGeometry.dispose();
+			ballGeometry.dispose();
+			ballOutlineGeometry.dispose();
 		};
-	}, [geometry, labelGeometry]);
+	}, [geometry, labelGeometry, ballGeometry, ballOutlineGeometry]);
 
 	useEffect(() => {
 		document.body.style.cursor = hovered ? "pointer" : "auto";
@@ -185,6 +207,13 @@ function HexGrid({
 					interactiveKeys?.includes(key) ??
 					(labels ? Boolean(label) : true);
 				const interactive = selectable || Boolean(onTileClick && listed);
+				const color =
+					tileColors?.[key] ??
+					(selectable && selected === key
+						? TILE_SELECTED
+						: hovered === key
+							? TILE_HOVER
+							: TILE);
 				return (
 					<HexTile
 						key={key}
@@ -193,10 +222,12 @@ function HexGrid({
 						hexSize={hexSize}
 						geometry={geometry}
 						labelGeometry={labelGeometry}
+						ballGeometry={ballGeometry}
+						ballOutlineGeometry={ballOutlineGeometry}
 						label={label}
+						color={color}
+						hasBall={ballKey === key}
 						interactive={interactive}
-						hovered={hovered === key}
-						selected={selectable && selected === key}
 						onHover={setHovered}
 						onClick={() => {
 							if (selectable) {
@@ -217,10 +248,12 @@ function HexTile({
 	hexSize,
 	geometry,
 	labelGeometry,
+	ballGeometry,
+	ballOutlineGeometry,
 	label,
+	color,
+	hasBall,
 	interactive,
-	hovered,
-	selected,
 	onHover,
 	onClick,
 }: {
@@ -229,16 +262,17 @@ function HexTile({
 	hexSize: number;
 	geometry: THREE.CylinderGeometry;
 	labelGeometry: THREE.PlaneGeometry;
+	ballGeometry: THREE.CircleGeometry;
+	ballOutlineGeometry: THREE.CircleGeometry;
 	label?: string;
+	color: string;
+	hasBall: boolean;
 	interactive: boolean;
-	hovered: boolean;
-	selected: boolean;
 	onHover: (key: string | null) => void;
 	onClick: () => void;
 }) {
 	const [x, z] = axialToWorld(q, r, hexSize);
 	const key = axialKey(q, r);
-	const color = selected ? TILE_SELECTED : hovered ? TILE_HOVER : TILE;
 
 	return (
 		<group position={[x, 0, z]}>
@@ -261,9 +295,41 @@ function HexTile({
 			>
 				<meshBasicMaterial color={color} />
 			</mesh>
+			{hasBall ? (
+				<BallMarker
+					geometry={ballGeometry}
+					outlineGeometry={ballOutlineGeometry}
+				/>
+			) : null}
 			{label ? (
 				<TileLabel label={label} geometry={labelGeometry} />
 			) : null}
+		</group>
+	);
+}
+
+function BallMarker({
+	geometry,
+	outlineGeometry,
+}: {
+	geometry: THREE.CircleGeometry;
+	outlineGeometry: THREE.CircleGeometry;
+}) {
+	return (
+		<group
+			position={[0, THICKNESS + 0.02, 0]}
+			rotation={[-Math.PI / 2, 0, 0]}
+		>
+			<mesh geometry={outlineGeometry} raycast={() => { }}>
+				<meshBasicMaterial color="#333333" />
+			</mesh>
+			<mesh
+				position={[0, 0, 0.002]}
+				geometry={geometry}
+				raycast={() => { }}
+			>
+				<meshBasicMaterial color="#f4f4f4" />
+			</mesh>
 		</group>
 	);
 }

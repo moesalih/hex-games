@@ -4,7 +4,8 @@ export type GameDef = {
 	path: string;
 	q: number;
 	r: number;
-	boardRadius: number;
+	boardRadiusMin: number;
+	boardRadiusMax: number;
 };
 
 /** Main menu hex radius: center + one ring. */
@@ -24,7 +25,8 @@ export const GAMES: GameDef[] = [
 		path: "/golf",
 		q: 0,
 		r: 1,
-		boardRadius: 8,
+		boardRadiusMin: 8,
+		boardRadiusMax: 12,
 	},
 ];
 
