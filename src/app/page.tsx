@@ -1,5 +1,5 @@
-import { HexBoard } from "@/components/hex-board";
+import { MainMenu } from "@/components/main-menu";
 
 export default function Home() {
-	return <HexBoard />;
+	return <MainMenu />;
 }

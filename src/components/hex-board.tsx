@@ -10,25 +10,41 @@ import {
 	type MutableRefObject,
 } from "react";
 import * as THREE from "three";
-import { axialKey, axialToWorld, hexesInRadius } from "@/lib/hex";
+import { axialKey, axialToWorld, hexesInRadius, type Axial } from "@/lib/hex";
 
-const TILE = "#e8e8e8";
-const TILE_HOVER = "#cfcfcf";
-const TILE_SELECTED = "#a8a8a8";
+const TILE = "#eeeeee";
+const TILE_HOVER = "#dddddd";
+const TILE_SELECTED = "#cccccc";
+const LABEL = "#333333";
 const THICKNESS = 0.06;
 const TILE_SCALE = 0.96;
 
 type HexBoardProps = {
 	radius?: number;
 	hexSize?: number;
+	/** Axial key (`q,r`) → label drawn on the tile. */
+	labels?: Record<string, string>;
+	/** Axial keys that hover/click. Defaults to labeled tiles, or all if unlabeled. */
+	interactiveKeys?: string[];
+	/** When false, tiles don't toggle a selected state. Default true. */
+	selectable?: boolean;
+	onTileClick?: (hex: Axial) => void;
 };
 
-export function HexBoard({ radius = 5, hexSize = 1 }: HexBoardProps) {
+export function HexBoard({
+	radius = 5,
+	hexSize = 1,
+	labels,
+	interactiveKeys,
+	selectable = true,
+	onTileClick,
+}: HexBoardProps) {
 	const clearSelection = useRef<() => void>(() => { });
 
 	return (
 		<Canvas
 			orthographic
+			flat
 			camera={{
 				position: [0, 50, 0],
 				up: [0, 0, 1],
@@ -53,6 +69,10 @@ export function HexBoard({ radius = 5, hexSize = 1 }: HexBoardProps) {
 			<HexGrid
 				radius={radius}
 				hexSize={hexSize}
+				labels={labels}
+				interactiveKeys={interactiveKeys}
+				selectable={selectable}
+				onTileClick={onTileClick}
 				clearSelection={clearSelection}
 			/>
 		</Canvas>
@@ -105,10 +125,18 @@ function FrameCamera({
 function HexGrid({
 	radius,
 	hexSize,
+	labels,
+	interactiveKeys,
+	selectable,
+	onTileClick,
 	clearSelection,
 }: {
 	radius: number;
 	hexSize: number;
+	labels?: Record<string, string>;
+	interactiveKeys?: string[];
+	selectable: boolean;
+	onTileClick?: (hex: Axial) => void;
 	clearSelection: MutableRefObject<() => void>;
 }) {
 	const hexes = useMemo(() => hexesInRadius(radius), [radius]);
@@ -125,6 +153,10 @@ function HexGrid({
 			),
 		[hexSize],
 	);
+	const labelGeometry = useMemo(
+		() => new THREE.PlaneGeometry(hexSize * 1.5, hexSize * 1.5),
+		[hexSize],
+	);
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 
@@ -133,8 +165,9 @@ function HexGrid({
 	useEffect(() => {
 		return () => {
 			geometry.dispose();
+			labelGeometry.dispose();
 		};
-	}, [geometry]);
+	}, [geometry, labelGeometry]);
 
 	useEffect(() => {
 		document.body.style.cursor = hovered ? "pointer" : "auto";
@@ -147,6 +180,11 @@ function HexGrid({
 		<group>
 			{hexes.map(({ q, r }) => {
 				const key = axialKey(q, r);
+				const label = labels?.[key];
+				const listed =
+					interactiveKeys?.includes(key) ??
+					(labels ? Boolean(label) : true);
+				const interactive = selectable || Boolean(onTileClick && listed);
 				return (
 					<HexTile
 						key={key}
@@ -154,12 +192,18 @@ function HexGrid({
 						r={r}
 						hexSize={hexSize}
 						geometry={geometry}
+						labelGeometry={labelGeometry}
+						label={label}
+						interactive={interactive}
 						hovered={hovered === key}
-						selected={selected === key}
+						selected={selectable && selected === key}
 						onHover={setHovered}
-						onSelect={(next) =>
-							setSelected((prev) => (prev === next ? null : next))
-						}
+						onClick={() => {
+							if (selectable) {
+								setSelected((prev) => (prev === key ? null : key));
+							}
+							if (interactive) onTileClick?.({ q, r });
+						}}
 					/>
 				);
 			})}
@@ -172,43 +216,130 @@ function HexTile({
 	r,
 	hexSize,
 	geometry,
+	labelGeometry,
+	label,
+	interactive,
 	hovered,
 	selected,
 	onHover,
-	onSelect,
+	onClick,
 }: {
 	q: number;
 	r: number;
 	hexSize: number;
 	geometry: THREE.CylinderGeometry;
+	labelGeometry: THREE.PlaneGeometry;
+	label?: string;
+	interactive: boolean;
 	hovered: boolean;
 	selected: boolean;
 	onHover: (key: string | null) => void;
-	onSelect: (key: string) => void;
+	onClick: () => void;
 }) {
 	const [x, z] = axialToWorld(q, r, hexSize);
 	const key = axialKey(q, r);
 	const color = selected ? TILE_SELECTED : hovered ? TILE_HOVER : TILE;
 
 	return (
+		<group position={[x, 0, z]}>
+			<mesh
+				position={[0, THICKNESS / 2, 0]}
+				rotation={[0, Math.PI / 6, 0]}
+				geometry={geometry}
+				onPointerOver={(event) => {
+					event.stopPropagation();
+					if (interactive) onHover(key);
+				}}
+				onPointerOut={(event) => {
+					event.stopPropagation();
+					onHover(null);
+				}}
+				onClick={(event) => {
+					event.stopPropagation();
+					if (interactive) onClick();
+				}}
+			>
+				<meshBasicMaterial color={color} />
+			</mesh>
+			{label ? (
+				<TileLabel label={label} geometry={labelGeometry} />
+			) : null}
+		</group>
+	);
+}
+
+function TileLabel({
+	label,
+	geometry,
+}: {
+	label: string;
+	geometry: THREE.PlaneGeometry;
+}) {
+	const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		let tex: THREE.CanvasTexture | undefined;
+
+		const draw = () => {
+			if (cancelled) return;
+			tex?.dispose();
+			tex = makeLabelTexture(label);
+			setTexture(tex);
+		};
+
+		if (document.fonts.status === "loaded") {
+			draw();
+		} else {
+			void document.fonts.ready.then(draw);
+		}
+
+		return () => {
+			cancelled = true;
+			tex?.dispose();
+		};
+	}, [label]);
+
+	if (!texture) return null;
+
+	return (
 		<mesh
-			position={[x, THICKNESS / 2, z]}
-			rotation={[0, Math.PI / 6, 0]}
+			position={[0, THICKNESS + 0.01, 0]}
+			rotation={[-Math.PI / 2, 0, Math.PI]}
 			geometry={geometry}
-			onPointerOver={(event) => {
-				event.stopPropagation();
-				onHover(key);
-			}}
-			onPointerOut={(event) => {
-				event.stopPropagation();
-				onHover(null);
-			}}
-			onClick={(event) => {
-				event.stopPropagation();
-				onSelect(key);
-			}}
+			raycast={() => { }}
 		>
-			<meshBasicMaterial color={color} />
+			<meshBasicMaterial map={texture} transparent depthWrite={false} />
 		</mesh>
 	);
+}
+
+function makeLabelTexture(label: string) {
+	const size = 512;
+	const canvas = document.createElement("canvas");
+	canvas.width = size;
+	canvas.height = size;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) {
+		return new THREE.CanvasTexture(canvas);
+	}
+	ctx.clearRect(0, 0, size, size);
+	ctx.fillStyle = LABEL;
+	const family =
+		getComputedStyle(document.documentElement).fontFamily ||
+		"Geist, ui-sans-serif, sans-serif";
+	const lines = label.trim().split(/\s+/);
+	const fontSize = lines.length > 1 ? 56 : 64;
+	ctx.font = `600 ${fontSize}px ${family}`;
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	const lineHeight = fontSize * 1.15;
+	const startY = size / 2 - ((lines.length - 1) * lineHeight) / 2;
+	for (let i = 0; i < lines.length; i++) {
+		ctx.fillText(lines[i], size / 2, startY + i * lineHeight);
+	}
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.colorSpace = THREE.SRGBColorSpace;
+	texture.needsUpdate = true;
+	return texture;
 }
