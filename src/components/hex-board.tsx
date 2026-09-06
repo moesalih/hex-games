@@ -105,7 +105,7 @@ function FrameCamera({
 			camera.manual = true;
 			const worldW = hexSize * (3 * radius + 2);
 			const worldH = hexSize * Math.sqrt(3) * (2 * radius + 1);
-			const zoom = 1.0;
+			const zoom = 0.96;
 			const halfW = worldW / 2 / zoom;
 			const halfH = worldH / 2 / zoom;
 			const aspect = size.width / size.height;
@@ -207,13 +207,18 @@ function HexGrid({
 					interactiveKeys?.includes(key) ??
 					(labels ? Boolean(label) : true);
 				const interactive = selectable || Boolean(onTileClick && listed);
-				const color =
+				let color =
 					tileColors?.[key] ??
 					(selectable && selected === key
 						? TILE_SELECTED
 						: hovered === key
 							? TILE_HOVER
 							: TILE);
+				if (interactive && hovered === key && tileColors?.[key]) {
+					color = new THREE.Color(color)
+						.lerp(new THREE.Color("#ffffff"), 0.18)
+						.getStyle();
+				}
 				return (
 					<HexTile
 						key={key}

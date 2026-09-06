@@ -8,7 +8,7 @@ export const metadata = {
 export default function GolfPage() {
 	return (
 		<>
-			<BackToMenu title="Hex Golf" />
+			<BackToMenu />
 			<HexGolf />
 		</>
 	);

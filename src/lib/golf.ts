@@ -2,10 +2,12 @@ import {
 	AXIAL_DIRECTIONS,
 	axialAdd,
 	axialDistance,
+	axialEqual,
 	axialKey,
 	axialNeighbors,
 	axialRound,
 	axialScale,
+	axialSubtract,
 	hexesInRadius,
 	hexesInRange,
 	hexLine,
@@ -39,12 +41,123 @@ export type GolfCourse = {
 	hole: Axial;
 };
 
+export const GOLF_MAX_POWER = 8;
+
+export type PowerRange = {
+	min: number;
+	max: number;
+};
+
+/** Power meter range from the tile the ball is on. */
+export const GOLF_LIE_POWER: Record<GolfTileType, PowerRange> = {
+	fairway: { min: 1, max: 8 },
+	rough: { min: 1, max: 2 },
+	sand: { min: 2, max: 3 },
+	green: { min: 1, max: 5 },
+	hole: { min: 1, max: 5 },
+	water: { min: 1, max: 2 },
+};
+
+export function tileAt(course: GolfCourse, hex: Axial): GolfTileType {
+	return course.tiles[axialKey(hex.q, hex.r)] ?? "rough";
+}
+
+export function liePower(
+	course: GolfCourse,
+	ball: Axial = course.ball,
+): PowerRange {
+	return GOLF_LIE_POWER[tileAt(course, ball)];
+}
+
+export function clampPowerRange(
+	range: PowerRange,
+	pathLength: number,
+): PowerRange {
+	if (pathLength <= 0) return { min: 1, max: 1 };
+	const max = Math.min(range.max, pathLength);
+	const min = Math.min(range.min, max);
+	return { min, max };
+}
+
 export function golfTileColors(course: GolfCourse): Record<string, string> {
 	const colors: Record<string, string> = {};
 	for (const [key, type] of Object.entries(course.tiles)) {
 		colors[key] = GOLF_TILE_COLORS[type];
 	}
 	return colors;
+}
+
+export function lightenHex(hex: string, t: number): string {
+	const raw = hex.replace("#", "");
+	const full =
+		raw.length === 3
+			? raw
+					.split("")
+					.map((c) => c + c)
+					.join("")
+			: raw;
+	const n = Number.parseInt(full, 16);
+	const mix = (c: number) => Math.round(c + (255 - c) * t);
+	const r = mix((n >> 16) & 255);
+	const g = mix((n >> 8) & 255);
+	const b = mix(n & 255);
+	return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+export function applyHighlights(
+	colors: Record<string, string>,
+	keys: Iterable<string>,
+	amount: number,
+): Record<string, string> {
+	const next = { ...colors };
+	for (const key of keys) {
+		const base = next[key];
+		if (base) next[key] = lightenHex(base, amount);
+	}
+	return next;
+}
+
+export function onBoardNeighbors(ball: Axial, radius: number): Axial[] {
+	return axialNeighbors(ball).filter((hex) => inHexRadius(hex, radius));
+}
+
+export function shotPath(
+	ball: Axial,
+	dir: Axial,
+	radius: number,
+	max = GOLF_MAX_POWER,
+): Axial[] {
+	const path: Axial[] = [];
+	let current = ball;
+	for (let i = 0; i < max; i++) {
+		current = axialAdd(current, dir);
+		if (!inHexRadius(current, radius)) break;
+		path.push(current);
+	}
+	return path;
+}
+
+export function shotDirection(ball: Axial, neighbor: Axial): Axial | null {
+	if (axialDistance(ball, neighbor) !== 1) return null;
+	return axialSubtract(neighbor, ball);
+}
+
+/** One step of the min..max power meter. Pure so the swing includes both ends. */
+export function nextPower(
+	power: number,
+	dir: 1 | -1,
+	min: number,
+	max: number,
+): { power: number; dir: 1 | -1 } {
+	if (max <= min) return { power: min, dir: 1 };
+	const next = power + dir;
+	if (next >= max) return { power: max, dir: -1 };
+	if (next <= min) return { power: min, dir: 1 };
+	return { power: next, dir };
+}
+
+export function ballInHole(course: GolfCourse) {
+	return axialEqual(course.ball, course.hole);
 }
 
 export function generateGolfCourse({

@@ -22,8 +22,16 @@ export function axialKey(q: number, r: number) {
 	return `${q},${r}`;
 }
 
+export function axialEqual(a: Axial, b: Axial) {
+	return a.q === b.q && a.r === b.r;
+}
+
 export function axialAdd(a: Axial, b: Axial): Axial {
 	return { q: a.q + b.q, r: a.r + b.r };
+}
+
+export function axialSubtract(a: Axial, b: Axial): Axial {
+	return { q: a.q - b.q, r: a.r - b.r };
 }
 
 export function axialScale(hex: Axial, k: number): Axial {
