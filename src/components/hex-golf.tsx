@@ -24,6 +24,7 @@ const golf = gameById("golf");
 const RADIUS_MIN = golf?.boardRadiusMin ?? 8;
 const RADIUS_MAX = golf?.boardRadiusMax ?? 12;
 const POWER_TICK_MS = 120;
+const GREEN_POWER_TICK_MS = 240;
 const ROLL_TICK_MS = 90;
 const NEXT_HOLE_MS = 700;
 const WATER_REVERT_MS = 450;
@@ -71,6 +72,9 @@ export function HexGolf() {
 		let dir: 1 | -1 = 1;
 		let hold = 1;
 		setPower(min);
+		const latest = courseRef.current;
+		const onGreen = latest ? tileAt(latest, latest.ball) === "green" : false;
+		const tickMs = onGreen ? GREEN_POWER_TICK_MS : POWER_TICK_MS;
 		const id = window.setInterval(() => {
 			const max = pathRef.current.length;
 			if (max <= min) {
@@ -87,7 +91,7 @@ export function HexGolf() {
 			dir = stepped.dir;
 			if (powerValue === min || powerValue === max) hold = 1;
 			setPower(powerValue);
-		}, POWER_TICK_MS);
+		}, tickMs);
 		return () => window.clearInterval(id);
 	}, [phase, path, powerMin]);
 
