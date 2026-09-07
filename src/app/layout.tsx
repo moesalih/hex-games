@@ -18,6 +18,10 @@ export const metadata: Metadata = {
 		template: "%s · Hex Games",
 	},
 	description: "Games on a hex grid",
+	icons: {
+		icon: "/hexagon-icon.png",
+		apple: "/hexagon-icon.png",
+	},
 };
 
 export default function RootLayout({
