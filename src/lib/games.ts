@@ -37,6 +37,15 @@ export const GAMES: GameDef[] = [
 		boardRadiusMin: 4,
 		boardRadiusMax: 4,
 	},
+	{
+		id: "space",
+		title: "Space",
+		path: "/space",
+		q: 1,
+		r: 0,
+		boardRadiusMin: 8,
+		boardRadiusMax: 8,
+	},
 ];
 
 export function gameAt(q: number, r: number): GameDef | undefined {
