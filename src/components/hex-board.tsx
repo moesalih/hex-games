@@ -1,7 +1,9 @@
 "use client";
 
 import { Canvas, useThree } from "@react-three/fiber";
+import type { LucideIcon } from "lucide-react";
 import {
+	createElement,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
@@ -9,6 +11,8 @@ import {
 	useState,
 	type MutableRefObject,
 } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
 import * as THREE from "three";
 import { axialKey, axialToWorld, hexesInRadius, type Axial } from "@/lib/hex";
 
@@ -19,6 +23,14 @@ const LABEL = "#333333";
 const THICKNESS = 0.06;
 const TILE_SCALE = 0.96;
 
+/** A Lucide icon, or an icon with a fill/stroke color. */
+export type HexTileIcon =
+	| LucideIcon
+	| {
+		icon: LucideIcon;
+		color?: string;
+	};
+
 type HexBoardProps = {
 	radius?: number;
 	hexSize?: number;
@@ -26,9 +38,11 @@ type HexBoardProps = {
 	labels?: Record<string, string>;
 	/** Axial key (`q,r`) → tile fill color. */
 	tileColors?: Record<string, string>;
+	/** Axial key (`q,r`) → Lucide icon drawn on the tile. */
+	icons?: Record<string, HexTileIcon>;
 	/** Axial key of the tile that shows a ball. */
 	ballKey?: string;
-	/** Axial keys that hover/click. Defaults to labeled tiles, or all if unlabeled. */
+	/** Axial keys that hover/click. Defaults to labeled/icon tiles, or all if unmarked. */
 	interactiveKeys?: string[];
 	/** When false, tiles don't toggle a selected state. Default true. */
 	selectable?: boolean;
@@ -40,6 +54,7 @@ export function HexBoard({
 	hexSize = 1,
 	labels,
 	tileColors,
+	icons,
 	ballKey,
 	interactiveKeys,
 	selectable = true,
@@ -77,6 +92,7 @@ export function HexBoard({
 				hexSize={hexSize}
 				labels={labels}
 				tileColors={tileColors}
+				icons={icons}
 				ballKey={ballKey}
 				interactiveKeys={interactiveKeys}
 				selectable={selectable}
@@ -135,6 +151,7 @@ function HexGrid({
 	hexSize,
 	labels,
 	tileColors,
+	icons,
 	ballKey,
 	interactiveKeys,
 	selectable,
@@ -145,6 +162,7 @@ function HexGrid({
 	hexSize: number;
 	labels?: Record<string, string>;
 	tileColors?: Record<string, string>;
+	icons?: Record<string, HexTileIcon>;
 	ballKey?: string;
 	interactiveKeys?: string[];
 	selectable: boolean;
@@ -203,9 +221,11 @@ function HexGrid({
 			{hexes.map(({ q, r }) => {
 				const key = axialKey(q, r);
 				const label = labels?.[key];
+				const icon = icons?.[key];
+				const marked = Boolean(label || icon);
 				const listed =
 					interactiveKeys?.includes(key) ??
-					(labels ? Boolean(label) : true);
+					(labels || icons ? marked : true);
 				const interactive = selectable || Boolean(onTileClick && listed);
 				let color =
 					tileColors?.[key] ??
@@ -230,6 +250,7 @@ function HexGrid({
 						ballGeometry={ballGeometry}
 						ballOutlineGeometry={ballOutlineGeometry}
 						label={label}
+						icon={icon}
 						color={color}
 						hasBall={ballKey === key}
 						interactive={interactive}
@@ -256,6 +277,7 @@ function HexTile({
 	ballGeometry,
 	ballOutlineGeometry,
 	label,
+	icon,
 	color,
 	hasBall,
 	interactive,
@@ -270,6 +292,7 @@ function HexTile({
 	ballGeometry: THREE.CircleGeometry;
 	ballOutlineGeometry: THREE.CircleGeometry;
 	label?: string;
+	icon?: HexTileIcon;
 	color: string;
 	hasBall: boolean;
 	interactive: boolean;
@@ -306,8 +329,12 @@ function HexTile({
 					outlineGeometry={ballOutlineGeometry}
 				/>
 			) : null}
-			{label ? (
-				<TileLabel label={label} geometry={labelGeometry} />
+			{label || icon ? (
+				<TileOverlay
+					label={label}
+					icon={icon}
+					geometry={labelGeometry}
+				/>
 			) : null}
 		</group>
 	);
@@ -339,37 +366,49 @@ function BallMarker({
 	);
 }
 
-function TileLabel({
+function TileOverlay({
 	label,
+	icon,
 	geometry,
 }: {
-	label: string;
+	label?: string;
+	icon?: HexTileIcon;
 	geometry: THREE.PlaneGeometry;
 }) {
 	const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+	const resolved = icon ? resolveTileIcon(icon) : undefined;
+	const Icon = resolved?.icon;
+	const iconColor = resolved?.color;
 
 	useEffect(() => {
 		let cancelled = false;
 		let tex: THREE.CanvasTexture | undefined;
 
-		const draw = () => {
+		const run = async () => {
+			if (document.fonts.status !== "loaded") {
+				await document.fonts.ready;
+			}
 			if (cancelled) return;
-			tex?.dispose();
-			tex = makeLabelTexture(label);
-			setTexture(tex);
+			try {
+				const next = await makeOverlayTexture(label, Icon, iconColor);
+				if (cancelled) {
+					next.dispose();
+					return;
+				}
+				tex = next;
+				setTexture(next);
+			} catch {
+				if (!cancelled) setTexture(null);
+			}
 		};
 
-		if (document.fonts.status === "loaded") {
-			draw();
-		} else {
-			void document.fonts.ready.then(draw);
-		}
+		void run();
 
 		return () => {
 			cancelled = true;
 			tex?.dispose();
 		};
-	}, [label]);
+	}, [label, Icon, iconColor]);
 
 	if (!texture) return null;
 
@@ -385,32 +424,126 @@ function TileLabel({
 	);
 }
 
-function makeLabelTexture(label: string) {
+function resolveTileIcon(value: HexTileIcon): {
+	icon: LucideIcon;
+	color: string;
+} {
+	if (typeof value === "object" && value !== null && "icon" in value) {
+		return { icon: value.icon, color: value.color ?? LABEL };
+	}
+	return { icon: value, color: LABEL };
+}
+
+function makeOverlayTexture(
+	label: string | undefined,
+	Icon: LucideIcon | undefined,
+	iconColor: string | undefined,
+): Promise<THREE.CanvasTexture> {
 	const size = 512;
 	const canvas = document.createElement("canvas");
 	canvas.width = size;
 	canvas.height = size;
 	const ctx = canvas.getContext("2d");
 	if (!ctx) {
-		return new THREE.CanvasTexture(canvas);
+		return Promise.resolve(new THREE.CanvasTexture(canvas));
 	}
-	ctx.clearRect(0, 0, size, size);
-	ctx.fillStyle = LABEL;
-	const family =
-		getComputedStyle(document.documentElement).fontFamily ||
-		"Geist, ui-sans-serif, sans-serif";
-	const lines = label.trim().split(/\s+/);
-	const fontSize = lines.length > 1 ? 56 : 64;
-	ctx.font = `600 ${fontSize}px ${family}`;
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	const lineHeight = fontSize * 1.15;
-	const startY = size / 2 - ((lines.length - 1) * lineHeight) / 2;
-	for (let i = 0; i < lines.length; i++) {
-		ctx.fillText(lines[i], size / 2, startY + i * lineHeight);
+
+	const trimmed = label?.trim() ?? "";
+	const hasLabel = trimmed.length > 0;
+	const hasIcon = Boolean(Icon);
+
+	const paint = async () => {
+		ctx.clearRect(0, 0, size, size);
+		if (hasIcon && Icon) {
+			const svg = lucideSvgMarkup(Icon, iconColor ?? LABEL);
+			if (svg) {
+				const img = await loadSvgImage(svg);
+				const iconSize = hasLabel ? 240 : 280;
+				const iconY = hasLabel
+					? size * 0.40 - iconSize / 2
+					: size / 2 - iconSize / 2;
+				ctx.drawImage(
+					img,
+					size / 2 - iconSize / 2,
+					iconY,
+					iconSize,
+					iconSize,
+				);
+			}
+		}
+		if (hasLabel) {
+			const lines = trimmed.split(/\s+/);
+			const fontSize = hasIcon ? 64 : lines.length > 1 ? 56 : 80;
+			const family =
+				getComputedStyle(document.documentElement).fontFamily ||
+				"Geist, ui-sans-serif, sans-serif";
+			ctx.fillStyle = LABEL;
+			ctx.font = `600 ${fontSize}px ${family}`;
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			const lineHeight = fontSize * 1.15;
+			const y = hasIcon ? size * 0.75 : size / 2;
+			const startY = y - ((lines.length - 1) * lineHeight) / 2;
+			for (let i = 0; i < lines.length; i++) {
+				ctx.fillText(lines[i], size / 2, startY + i * lineHeight);
+			}
+		}
+		const texture = new THREE.CanvasTexture(canvas);
+		texture.colorSpace = THREE.SRGBColorSpace;
+		texture.needsUpdate = true;
+		return texture;
+	};
+
+	return paint();
+}
+
+let iconMount: { el: HTMLDivElement; root: Root } | undefined;
+
+function lucideSvgMarkup(Icon: LucideIcon, color: string) {
+	if (!iconMount) {
+		const el = document.createElement("div");
+		el.style.position = "fixed";
+		el.style.left = "-9999px";
+		el.style.top = "0";
+		el.style.width = "0";
+		el.style.height = "0";
+		el.style.overflow = "hidden";
+		el.setAttribute("aria-hidden", "true");
+		document.body.appendChild(el);
+		iconMount = { el, root: createRoot(el) };
 	}
-	const texture = new THREE.CanvasTexture(canvas);
-	texture.colorSpace = THREE.SRGBColorSpace;
-	texture.needsUpdate = true;
-	return texture;
+	flushSync(() => {
+		iconMount!.root.render(
+			createElement(Icon, {
+				color,
+				size: 24,
+				strokeWidth: 2,
+				"aria-hidden": true,
+			}),
+		);
+	});
+	const svg = iconMount.el.querySelector("svg");
+	if (!svg) return "";
+	if (!svg.getAttribute("xmlns")) {
+		svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+	}
+	return svg.outerHTML;
+}
+
+function loadSvgImage(svg: string) {
+	return new Promise<HTMLImageElement>((resolve, reject) => {
+		const url = URL.createObjectURL(
+			new Blob([svg], { type: "image/svg+xml" }),
+		);
+		const img = new Image();
+		img.onload = () => {
+			URL.revokeObjectURL(url);
+			resolve(img);
+		};
+		img.onerror = () => {
+			URL.revokeObjectURL(url);
+			reject(new Error("Failed to load Lucide icon"));
+		};
+		img.src = url;
+	});
 }
