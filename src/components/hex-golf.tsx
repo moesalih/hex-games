@@ -1,5 +1,6 @@
 "use client";
 
+import { CircleSmall } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HexBoard } from "@/components/hex-board";
 import { gameById } from "@/lib/games";
@@ -242,7 +243,21 @@ export function HexGolf() {
 		}
 	}
 
-	if (!course || !tileColors) return null;
+	const icons = useMemo(
+		() =>
+			course
+				? {
+						[axialKey(course.ball.q, course.ball.r)]: {
+							icon: CircleSmall,
+							color: "#ffffff",
+							fill: "#ffffff",
+						},
+					}
+				: undefined,
+		[course],
+	);
+
+	if (!course || !tileColors || !icons) return null;
 
 	return (
 		<>
@@ -252,7 +267,7 @@ export function HexGolf() {
 			<HexBoard
 				radius={course.radius}
 				tileColors={tileColors}
-				ballKey={axialKey(course.ball.q, course.ball.r)}
+				icons={icons}
 				interactiveKeys={interactiveKeys}
 				selectable={false}
 				onTileClick={handleTileClick}

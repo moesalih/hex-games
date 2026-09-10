@@ -23,12 +23,13 @@ const LABEL = "#333333";
 const THICKNESS = 0.06;
 const TILE_SCALE = 0.96;
 
-/** A Lucide icon, or an icon with a fill/stroke color. */
+/** A Lucide icon, or an icon with stroke and optional fill. */
 export type HexTileIcon =
 	| LucideIcon
 	| {
 		icon: LucideIcon;
 		color?: string;
+		fill?: string;
 	};
 
 type HexBoardProps = {
@@ -40,9 +41,7 @@ type HexBoardProps = {
 	tileColors?: Record<string, string>;
 	/** Axial key (`q,r`) → Lucide icon drawn on the tile. */
 	icons?: Record<string, HexTileIcon>;
-	/** Axial key of the tile that shows a ball. */
-	ballKey?: string;
-	/** Axial keys that hover/click. Defaults to labeled/icon tiles, or all if unmarked. */
+	/** Axial keys that hover/click. Defaults to labeled tiles, or all if unlabeled. */
 	interactiveKeys?: string[];
 	/** When false, tiles don't toggle a selected state. Default true. */
 	selectable?: boolean;
@@ -55,7 +54,6 @@ export function HexBoard({
 	labels,
 	tileColors,
 	icons,
-	ballKey,
 	interactiveKeys,
 	selectable = true,
 	onTileClick,
@@ -93,7 +91,6 @@ export function HexBoard({
 				labels={labels}
 				tileColors={tileColors}
 				icons={icons}
-				ballKey={ballKey}
 				interactiveKeys={interactiveKeys}
 				selectable={selectable}
 				onTileClick={onTileClick}
@@ -152,7 +149,6 @@ function HexGrid({
 	labels,
 	tileColors,
 	icons,
-	ballKey,
 	interactiveKeys,
 	selectable,
 	onTileClick,
@@ -163,7 +159,6 @@ function HexGrid({
 	labels?: Record<string, string>;
 	tileColors?: Record<string, string>;
 	icons?: Record<string, HexTileIcon>;
-	ballKey?: string;
 	interactiveKeys?: string[];
 	selectable: boolean;
 	onTileClick?: (hex: Axial) => void;
@@ -187,14 +182,6 @@ function HexGrid({
 		() => new THREE.PlaneGeometry(hexSize * 1.5, hexSize * 1.5),
 		[hexSize],
 	);
-	const ballGeometry = useMemo(
-		() => new THREE.CircleGeometry(hexSize * 0.2, 24),
-		[hexSize],
-	);
-	const ballOutlineGeometry = useMemo(
-		() => new THREE.CircleGeometry(hexSize * 0.26, 24),
-		[hexSize],
-	);
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 
@@ -204,10 +191,8 @@ function HexGrid({
 		return () => {
 			geometry.dispose();
 			labelGeometry.dispose();
-			ballGeometry.dispose();
-			ballOutlineGeometry.dispose();
 		};
-	}, [geometry, labelGeometry, ballGeometry, ballOutlineGeometry]);
+	}, [geometry, labelGeometry]);
 
 	useEffect(() => {
 		document.body.style.cursor = hovered ? "pointer" : "auto";
@@ -222,10 +207,9 @@ function HexGrid({
 				const key = axialKey(q, r);
 				const label = labels?.[key];
 				const icon = icons?.[key];
-				const marked = Boolean(label || icon);
 				const listed =
 					interactiveKeys?.includes(key) ??
-					(labels || icons ? marked : true);
+					(labels ? Boolean(label) : true);
 				const interactive = selectable || Boolean(onTileClick && listed);
 				let color =
 					tileColors?.[key] ??
@@ -247,12 +231,9 @@ function HexGrid({
 						hexSize={hexSize}
 						geometry={geometry}
 						labelGeometry={labelGeometry}
-						ballGeometry={ballGeometry}
-						ballOutlineGeometry={ballOutlineGeometry}
 						label={label}
 						icon={icon}
 						color={color}
-						hasBall={ballKey === key}
 						interactive={interactive}
 						onHover={setHovered}
 						onClick={() => {
@@ -274,12 +255,9 @@ function HexTile({
 	hexSize,
 	geometry,
 	labelGeometry,
-	ballGeometry,
-	ballOutlineGeometry,
 	label,
 	icon,
 	color,
-	hasBall,
 	interactive,
 	onHover,
 	onClick,
@@ -289,12 +267,9 @@ function HexTile({
 	hexSize: number;
 	geometry: THREE.CylinderGeometry;
 	labelGeometry: THREE.PlaneGeometry;
-	ballGeometry: THREE.CircleGeometry;
-	ballOutlineGeometry: THREE.CircleGeometry;
 	label?: string;
 	icon?: HexTileIcon;
 	color: string;
-	hasBall: boolean;
 	interactive: boolean;
 	onHover: (key: string | null) => void;
 	onClick: () => void;
@@ -323,12 +298,6 @@ function HexTile({
 			>
 				<meshBasicMaterial color={color} />
 			</mesh>
-			{hasBall ? (
-				<BallMarker
-					geometry={ballGeometry}
-					outlineGeometry={ballOutlineGeometry}
-				/>
-			) : null}
 			{label || icon ? (
 				<TileOverlay
 					label={label}
@@ -336,32 +305,6 @@ function HexTile({
 					geometry={labelGeometry}
 				/>
 			) : null}
-		</group>
-	);
-}
-
-function BallMarker({
-	geometry,
-	outlineGeometry,
-}: {
-	geometry: THREE.CircleGeometry;
-	outlineGeometry: THREE.CircleGeometry;
-}) {
-	return (
-		<group
-			position={[0, THICKNESS + 0.02, 0]}
-			rotation={[-Math.PI / 2, 0, 0]}
-		>
-			<mesh geometry={outlineGeometry} raycast={() => { }}>
-				<meshBasicMaterial color="#333333" />
-			</mesh>
-			<mesh
-				position={[0, 0, 0.002]}
-				geometry={geometry}
-				raycast={() => { }}
-			>
-				<meshBasicMaterial color="#f4f4f4" />
-			</mesh>
 		</group>
 	);
 }
@@ -379,10 +322,17 @@ function TileOverlay({
 	const resolved = icon ? resolveTileIcon(icon) : undefined;
 	const Icon = resolved?.icon;
 	const iconColor = resolved?.color;
+	const iconFill = resolved?.fill;
 
 	useEffect(() => {
 		let cancelled = false;
-		let tex: THREE.CanvasTexture | undefined;
+		const cached = overlayTextureCache.get(
+			overlayCacheKey(label, Icon, iconColor, iconFill),
+		);
+		if (cached) {
+			setTexture(cached);
+			return;
+		}
 
 		const run = async () => {
 			if (document.fonts.status !== "loaded") {
@@ -390,12 +340,13 @@ function TileOverlay({
 			}
 			if (cancelled) return;
 			try {
-				const next = await makeOverlayTexture(label, Icon, iconColor);
-				if (cancelled) {
-					next.dispose();
-					return;
-				}
-				tex = next;
+				const next = await getOverlayTexture(
+					label,
+					Icon,
+					iconColor,
+					iconFill,
+				);
+				if (cancelled) return;
 				setTexture(next);
 			} catch {
 				if (!cancelled) setTexture(null);
@@ -406,9 +357,8 @@ function TileOverlay({
 
 		return () => {
 			cancelled = true;
-			tex?.dispose();
 		};
-	}, [label, Icon, iconColor]);
+	}, [label, Icon, iconColor, iconFill]);
 
 	if (!texture) return null;
 
@@ -427,17 +377,48 @@ function TileOverlay({
 function resolveTileIcon(value: HexTileIcon): {
 	icon: LucideIcon;
 	color: string;
+	fill?: string;
 } {
 	if (typeof value === "object" && value !== null && "icon" in value) {
-		return { icon: value.icon, color: value.color ?? LABEL };
+		return {
+			icon: value.icon,
+			color: value.color ?? LABEL,
+			fill: value.fill,
+		};
 	}
 	return { icon: value, color: LABEL };
+}
+
+const overlayTextureCache = new Map<string, THREE.CanvasTexture>();
+
+function overlayCacheKey(
+	label: string | undefined,
+	Icon: LucideIcon | undefined,
+	iconColor: string | undefined,
+	iconFill: string | undefined,
+) {
+	return `${Icon?.displayName ?? ""}:${iconColor ?? ""}:${iconFill ?? ""}:${label ?? ""}`;
+}
+
+async function getOverlayTexture(
+	label: string | undefined,
+	Icon: LucideIcon | undefined,
+	iconColor: string | undefined,
+	iconFill: string | undefined,
+) {
+	const key = overlayCacheKey(label, Icon, iconColor, iconFill);
+	const cached = overlayTextureCache.get(key);
+	if (cached) return cached;
+	const texture = await makeOverlayTexture(label, Icon, iconColor, iconFill);
+	overlayTextureCache.set(key, texture);
+	return texture;
 }
 
 function makeOverlayTexture(
 	label: string | undefined,
 	Icon: LucideIcon | undefined,
 	iconColor: string | undefined,
+	iconFill: string | undefined,
 ): Promise<THREE.CanvasTexture> {
 	const size = 512;
 	const canvas = document.createElement("canvas");
@@ -455,7 +436,7 @@ function makeOverlayTexture(
 	const paint = async () => {
 		ctx.clearRect(0, 0, size, size);
 		if (hasIcon && Icon) {
-			const svg = lucideSvgMarkup(Icon, iconColor ?? LABEL);
+			const svg = lucideSvgMarkup(Icon, iconColor ?? LABEL, iconFill);
 			if (svg) {
 				const img = await loadSvgImage(svg);
 				const iconSize = hasLabel ? 240 : 280;
@@ -499,7 +480,11 @@ function makeOverlayTexture(
 
 let iconMount: { el: HTMLDivElement; root: Root } | undefined;
 
-function lucideSvgMarkup(Icon: LucideIcon, color: string) {
+function lucideSvgMarkup(
+	Icon: LucideIcon,
+	color: string,
+	fill?: string,
+) {
 	if (!iconMount) {
 		const el = document.createElement("div");
 		el.style.position = "fixed";
@@ -518,6 +503,7 @@ function lucideSvgMarkup(Icon: LucideIcon, color: string) {
 				color,
 				size: 24,
 				strokeWidth: 2,
+				...(fill ? { fill } : {}),
 				"aria-hidden": true,
 			}),
 		);
