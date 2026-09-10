@@ -24,6 +24,8 @@ const LABEL = "#eeeeee";
 const ICON = "#eeeeee";
 const THICKNESS = 0.06;
 const TILE_SCALE = 0.96;
+/** Corner fillet as a fraction of hex size — enough to soften vertices. */
+const TILE_CORNER = 0.25;
 
 /** A Lucide icon, or an icon with stroke and optional fill. */
 export type HexTileIcon =
@@ -167,16 +169,15 @@ function HexGrid({
 	clearSelection: MutableRefObject<() => void>;
 }) {
 	const hexes = useMemo(() => hexesInRadius(radius), [radius]);
-	// Radius is center-to-vertex. Default 6-sided cylinder is pointy along
-	// ±Z; rotate 30° so vertices point along ±X (flat-top), matching
-	// axialToWorld. TILE_SCALE insets each hex so neighbors leave a grout gap.
+	// Rounded hex in XZ, thickness along Y, vertices along ±X (flat-top)
+	// so it tessellates with axialToWorld. TILE_SCALE insets each hex so
+	// neighbors leave a grout gap.
 	const geometry = useMemo(
 		() =>
-			new THREE.CylinderGeometry(
+			roundedHexGeometry(
 				hexSize * TILE_SCALE,
-				hexSize * TILE_SCALE,
+				hexSize * TILE_CORNER,
 				THICKNESS,
-				6,
 			),
 		[hexSize],
 	);
@@ -267,7 +268,7 @@ function HexTile({
 	q: number;
 	r: number;
 	hexSize: number;
-	geometry: THREE.CylinderGeometry;
+	geometry: THREE.BufferGeometry;
 	labelGeometry: THREE.PlaneGeometry;
 	label?: string;
 	icon?: HexTileIcon;
@@ -283,7 +284,6 @@ function HexTile({
 		<group position={[x, 0, z]}>
 			<mesh
 				position={[0, THICKNESS / 2, 0]}
-				rotation={[0, Math.PI / 6, 0]}
 				geometry={geometry}
 				onPointerOver={(event) => {
 					event.stopPropagation();
@@ -374,6 +374,42 @@ function TileOverlay({
 			<meshBasicMaterial map={texture} transparent depthWrite={false} />
 		</mesh>
 	);
+}
+
+function roundedHexGeometry(
+	radius: number,
+	cornerRadius: number,
+	thickness: number,
+) {
+	const n = 6;
+	const maxCorner = radius * Math.sin(Math.PI / n);
+	const r = Math.min(cornerRadius, maxCorner * 0.95);
+	// Arc center sits on the vertex ray, inset so the fillet is tangent
+	// to both edges (interior half-angle is 60° for a hexagon).
+	const centerDist = radius - r / Math.sin(Math.PI / 3);
+	const shape = new THREE.Shape();
+	for (let i = 0; i < n; i++) {
+		const theta = (i * Math.PI * 2) / n;
+		shape.absarc(
+			Math.cos(theta) * centerDist,
+			Math.sin(theta) * centerDist,
+			r,
+			theta - Math.PI / n,
+			theta + Math.PI / n,
+			false,
+		);
+	}
+	shape.closePath();
+
+	const geometry = new THREE.ExtrudeGeometry(shape, {
+		depth: thickness,
+		bevelEnabled: false,
+		curveSegments: 6,
+		steps: 1,
+	});
+	geometry.rotateX(-Math.PI / 2);
+	geometry.translate(0, -thickness / 2, 0);
+	return geometry;
 }
 
 function resolveTileIcon(value: HexTileIcon): {
