@@ -247,12 +247,12 @@ export function HexGolf() {
 		() =>
 			course
 				? {
-						[axialKey(course.ball.q, course.ball.r)]: {
-							icon: CircleSmall,
-							color: "#ffffff",
-							fill: "#ffffff",
-						},
-					}
+					[axialKey(course.ball.q, course.ball.r)]: {
+						icon: CircleSmall,
+						color: "#ffffff",
+						fill: "#ffffff",
+					},
+				}
 				: undefined,
 		[course],
 	);
@@ -262,7 +262,7 @@ export function HexGolf() {
 	return (
 		<>
 			<div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex justify-end p-4">
-				<span className="text-sm text-neutral-400">Hole {holeNumber}</span>
+				<span className="text-lg font-medium text-neutral-400">Hole {holeNumber}</span>
 			</div>
 			<HexBoard
 				radius={course.radius}
