@@ -26,7 +26,7 @@ export const GAMES: GameDef[] = [
 		q: 0,
 		r: 1,
 		boardRadiusMin: 8,
-		boardRadiusMax: 12,
+		boardRadiusMax: 11,
 	},
 	{
 		id: "test",

@@ -16,10 +16,12 @@ import { createRoot, type Root } from "react-dom/client";
 import * as THREE from "three";
 import { axialKey, axialToWorld, hexesInRadius, type Axial } from "@/lib/hex";
 
-const TILE = "#eeeeee";
-const TILE_HOVER = "#dddddd";
-const TILE_SELECTED = "#cccccc";
-const LABEL = "#333333";
+const BACKGROUND = "#000000";
+const TILE = "#111111";
+const TILE_HOVER = "#222222";
+const TILE_SELECTED = "#333333";
+const LABEL = "#eeeeee";
+const ICON = "#eeeeee";
 const THICKNESS = 0.06;
 const TILE_SCALE = 0.96;
 
@@ -76,14 +78,14 @@ export function HexBoard({
 				inset: 0,
 				width: "100%",
 				height: "100%",
-				background: "#ffffff",
+				background: BACKGROUND,
 			}}
 			onCreated={({ gl }) => {
-				gl.setClearColor("#ffffff", 1);
+				gl.setClearColor(BACKGROUND, 1);
 			}}
 			onPointerMissed={() => clearSelection.current()}
 		>
-			<color attach="background" args={["#ffffff"]} />
+			<color attach="background" args={[BACKGROUND]} />
 			<FrameCamera radius={radius} hexSize={hexSize} />
 			<HexGrid
 				radius={radius}
@@ -382,11 +384,11 @@ function resolveTileIcon(value: HexTileIcon): {
 	if (typeof value === "object" && value !== null && "icon" in value) {
 		return {
 			icon: value.icon,
-			color: value.color ?? LABEL,
+			color: value.color ?? ICON,
 			fill: value.fill,
 		};
 	}
-	return { icon: value, color: LABEL };
+	return { icon: value, color: ICON };
 }
 
 const overlayTextureCache = new Map<string, THREE.CanvasTexture>();
@@ -436,7 +438,7 @@ function makeOverlayTexture(
 	const paint = async () => {
 		ctx.clearRect(0, 0, size, size);
 		if (hasIcon && Icon) {
-			const svg = lucideSvgMarkup(Icon, iconColor ?? LABEL, iconFill);
+			const svg = lucideSvgMarkup(Icon, iconColor ?? ICON, iconFill);
 			if (svg) {
 				const img = await loadSvgImage(svg);
 				const iconSize = hasLabel ? 240 : 280;

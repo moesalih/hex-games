@@ -7,12 +7,12 @@ export function BackToMenu({ title }: { title?: string }) {
 			<Link
 				href="/"
 				aria-label="Home"
-				className="pointer-events-auto text-neutral-500 transition-colors hover:text-neutral-900"
+				className="pointer-events-auto text-neutral-300 transition-colors hover:text-white"
 			>
 				<Home className="size-6" />
 			</Link>
 			{title ? (
-				<span className="text-sm text-neutral-400">{title}</span>
+				<span className="text-sm text-neutral-200">{title}</span>
 			) : null}
 		</nav>
 	);
