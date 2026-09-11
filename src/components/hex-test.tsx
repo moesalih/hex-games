@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleSmall, Flag, House, Star } from "lucide-react";
+import { CircleSmall, Flag, House, Rocket, Star } from "lucide-react";
 import { HexBoard } from "@/components/hex-board";
 import { gameById } from "@/lib/games";
 import { GOLF_TILE_COLORS } from "@/lib/golf";
@@ -26,6 +26,7 @@ const ICONS = {
 	[axialKey(2, 1)]: Star,
 	[axialKey(-2, -1)]: Flag,
 	[axialKey(2, -2)]: House,
+	[axialKey(0, 0)]: Rocket,
 	[axialKey(-2, 2)]: {
 		icon: CircleSmall,
 		color: "#ffffff",

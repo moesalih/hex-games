@@ -477,7 +477,7 @@ function makeOverlayTexture(
 			const svg = lucideSvgMarkup(Icon, iconColor ?? ICON, iconFill);
 			if (svg) {
 				const img = await loadSvgImage(svg);
-				const iconSize = hasLabel ? 240 : 280;
+				const iconSize = hasLabel ? 240 : 320;
 				const iconY = hasLabel
 					? size * 0.40 - iconSize / 2
 					: size / 2 - iconSize / 2;
